@@ -10,7 +10,7 @@ export interface AppLayoutProps {
 
 const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [activeMenu, setActiveMenu] = useState('home');
+  const [activeMenu, setActiveMenu] = useState('translation');
   const navigate = useNavigate();
   const location = useLocation();
   const logout = useAuthStore((state) => state.logout);
@@ -18,10 +18,10 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   // 根据当前路径设置活动菜单
   useEffect(() => {
     const path = location.pathname;
-    if (path === '/' || path.includes('correction')) {
-      setActiveMenu('correction');
-    } else if (path.includes('translation')) {
+    if (path === '/' || path.includes('translation')) {
       setActiveMenu('translation');
+    } else if (path.includes('correction')) {
+      setActiveMenu('correction');
     } else if (path.includes('ai-detection')) {
       setActiveMenu('ai-detection');
     } else if (path.includes('modification')) {

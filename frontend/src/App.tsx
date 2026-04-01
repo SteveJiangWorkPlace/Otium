@@ -66,7 +66,7 @@ const App: React.FC = () => {
             <Route path="/register" element={<Navigate to="/login" replace />} />
             <Route path="/forgot-password" element={<Navigate to="/login" replace />} />
             <Route path="/reset-password/:token" element={<Navigate to="/login" replace />} />
-            <Route path="/" element={<Navigate to="/correction" />} />
+            <Route path="/" element={<Navigate to="/translation" />} />
             <Route
               path="/correction"
               element={
