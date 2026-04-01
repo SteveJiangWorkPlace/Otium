@@ -79,7 +79,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         event.preventDefault(); // 防止页面滚动
 
         // 定义菜单项顺序（与Sidebar中的顺序一致）
-        const menuOrder = ['correction', 'translation', 'ai-detection', 'modification', 'admin'];
+        const menuOrder = ['translation', 'ai-detection', 'modification', 'correction', 'admin'];
 
         // 过滤可见的菜单项（管理员权限检查）
         const visibleMenus = menuOrder.filter((menu) => {

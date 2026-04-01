@@ -30,11 +30,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   // 菜单项定义 - 适配Otium项目
   const menuItems: MenuItem[] = [
     {
-      id: 'correction',
-      label: '智能纠错',
-      visible: true,
-    },
-    {
       id: 'translation',
       label: '文本翻译',
       visible: true,
@@ -47,6 +42,11 @@ const Sidebar: React.FC<SidebarProps> = ({
     {
       id: 'modification',
       label: '文本修改',
+      visible: true,
+    },
+    {
+      id: 'correction',
+      label: '智能纠错',
       visible: true,
     },
     {
