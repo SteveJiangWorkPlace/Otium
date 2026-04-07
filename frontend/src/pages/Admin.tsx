@@ -93,8 +93,8 @@ const Admin: React.FC = () => {
       const account: GeneratedAccountInfo = {
         username,
         password,
-        monthly_translation_limit: 3,
-        monthly_ai_detection_limit: 3,
+        monthly_translation_limit: 5,
+        monthly_ai_detection_limit: 5,
       };
 
       await apiClient.addUser(account);
