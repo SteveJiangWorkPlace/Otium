@@ -58,7 +58,7 @@ const createMessageId = () =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 const createDefaultConversationState = (): ConversationState => ({
-  isExpanded: false,
+  isExpanded: true,
   messages: [],
   inputText: '',
   loading: false,

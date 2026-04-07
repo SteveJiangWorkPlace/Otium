@@ -6,13 +6,22 @@ import { apiClient } from '../api/client';
 import { UserInfo } from '../types';
 import { Button, Card, Input, Modal, Form, FormItem, Icon } from '../components/ui';
 
+interface GeneratedAccountInfo {
+  username: string;
+  password: string;
+  monthly_translation_limit: number;
+  monthly_ai_detection_limit: number;
+}
+
 const Admin: React.FC = () => {
   const navigate = useNavigate();
   const { isAdmin } = useAuthStore();
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingUser, setEditingUser] = useState<UserInfo | null>(null);
+  const [generatedAccounts, setGeneratedAccounts] = useState<GeneratedAccountInfo[]>([]);
   // 表单状态
   const [formData, setFormData] = useState({
     username: '',
@@ -39,6 +48,63 @@ const Admin: React.FC = () => {
       alert('获取用户列表失败');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const getNextGeneratedUsername = () => {
+    const maxUserNumber = users.reduce((max, user) => {
+      const match = /^user(\d+)$/i.exec(user.username);
+      if (!match) {
+        return max;
+      }
+
+      return Math.max(max, parseInt(match[1], 10));
+    }, 0);
+
+    return `user${maxUserNumber + 1}`;
+  };
+
+  const generateRandomPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    let password = '';
+    for (let i = 0; i < 6; i += 1) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return password;
+  };
+
+  const buildAccountCopyText = (account: GeneratedAccountInfo) =>
+    `您好，欢迎使用 Otium。您的 Otium 账号是 ${account.username}，密码是 ${account.password}。每月有 ${account.monthly_translation_limit} 次翻译次数限制和 ${account.monthly_ai_detection_limit} 次 AI 检测次数限制。`;
+
+  const handleCopyAccountInfo = async (account: GeneratedAccountInfo) => {
+    try {
+      await navigator.clipboard.writeText(buildAccountCopyText(account));
+      alert(`已复制 ${account.username} 的账号信息`);
+    } catch (error) {
+      alert('复制失败，请稍后重试');
+    }
+  };
+
+  const handleGenerateAccount = async () => {
+    setGenerating(true);
+    try {
+      const username = getNextGeneratedUsername();
+      const password = generateRandomPassword();
+      const account: GeneratedAccountInfo = {
+        username,
+        password,
+        monthly_translation_limit: 3,
+        monthly_ai_detection_limit: 3,
+      };
+
+      await apiClient.addUser(account);
+
+      setGeneratedAccounts((prev) => [account, ...prev]);
+      await fetchUsers();
+    } catch (error) {
+      alert('生成账号失败，请稍后重试');
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -173,11 +239,28 @@ const Admin: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      render: (_: any, record: UserInfo) => (
-        <Button variant="ghost" size="small" onClick={() => handleEdit(record)}>
-          编辑
-        </Button>
-      ),
+      render: (_: any, record: UserInfo) => {
+        const generatedAccount = generatedAccounts.find(
+          (item) => item.username === record.username
+        );
+
+        return (
+          <div style={{ display: 'flex', gap: 'var(--spacing-2)', flexWrap: 'wrap' }}>
+            <Button variant="ghost" size="small" onClick={() => handleEdit(record)}>
+              编辑
+            </Button>
+            {generatedAccount && (
+              <Button
+                variant="ghost"
+                size="small"
+                onClick={() => handleCopyAccountInfo(generatedAccount)}
+              >
+                复制信息
+              </Button>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
@@ -208,9 +291,83 @@ const Admin: React.FC = () => {
           <Button variant="primary" onClick={handleAdd} icon={<Icon name="add" size="sm" />}>
             添加用户
           </Button>
+          <Button
+            variant="ghost"
+            onClick={handleGenerateAccount}
+            loading={generating}
+            icon={<Icon name="add" size="sm" />}
+          >
+            生成试用账号
+          </Button>
         </div>
         <Table columns={columns} dataSource={users} rowKey="username" loading={loading} />
       </Card>
+
+      {generatedAccounts.length > 0 && (
+        <Card variant="elevated" padding="medium" style={{ marginTop: 'var(--spacing-4)' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 'var(--spacing-4)',
+            }}
+          >
+            <h3
+              style={{
+                fontSize: 'var(--font-size-lg)',
+                fontWeight: 'var(--font-weight-semibold)',
+                color: 'var(--color-text-primary)',
+                margin: 0,
+              }}
+            >
+              最近生成的账号
+            </h3>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-3)' }}>
+            {generatedAccounts.map((account) => (
+              <div
+                key={account.username}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 'var(--spacing-3)',
+                  padding: 'var(--spacing-3)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: 'var(--color-background)',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 'var(--spacing-1)',
+                    color: 'var(--color-text-primary)',
+                  }}
+                >
+                  <span>账号：{account.username}</span>
+                  <span>密码：{account.password}</span>
+                  <span>
+                    每月翻译：{account.monthly_translation_limit} 次 / 每月 AI 检测：
+                    {account.monthly_ai_detection_limit} 次
+                  </span>
+                </div>
+                <Button
+                  variant="primary"
+                  size="small"
+                  onClick={() => handleCopyAccountInfo(account)}
+                >
+                  复制信息
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <Modal
         title={editingUser ? '编辑用户' : '添加用户'}

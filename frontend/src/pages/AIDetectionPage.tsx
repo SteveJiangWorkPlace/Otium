@@ -105,7 +105,7 @@ const AIDetectionPage: React.FC = () => {
   };
 
   const conversation = conversations[pageKey] || {
-    isExpanded: false,
+    isExpanded: true,
     messages: [],
     inputText: '',
     loading: false,
