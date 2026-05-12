@@ -120,6 +120,9 @@ class EmailService:
         if not self.resend_api_key:
             logger.warning("RESEND_API_KEY is not configured; email delivery is unavailable.")
             return False
+        if not self.resend_from:
+            logger.warning("RESEND_FROM is not configured; email delivery is unavailable.")
+            return False
 
         try:
             # 准备Resend邮件参数

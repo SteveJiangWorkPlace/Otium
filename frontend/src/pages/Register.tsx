@@ -266,15 +266,16 @@ const Register: React.FC = () => {
     try {
       const response = await apiClient.register(username, email, password, verificationToken);
       if (response.success) {
-        const userInfo = response.user_info || {
-          username,
-          monthly_translation_limit: 5,
-          monthly_ai_detection_limit: 5,
-          monthly_translation_used: 0,
-          monthly_ai_detection_used: 0,
-          is_admin: false,
-          is_active: true,
-        };
+        const userInfo = response.user_info ||
+          response.user || {
+            username,
+            monthly_translation_limit: 5,
+            monthly_ai_detection_limit: 5,
+            monthly_translation_used: 0,
+            monthly_ai_detection_used: 0,
+            is_admin: false,
+            is_active: true,
+          };
         const token = response.token;
 
         setAuth(token, userInfo as any);

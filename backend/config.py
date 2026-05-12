@@ -290,7 +290,9 @@ class Settings:
         # 检查邮件配置（仅支持 Resend API）
         if not self.RESEND_API_KEY:
             logging.warning("RESEND_API_KEY is not set; email delivery will be unavailable.")
-        if self.RESEND_FROM == "onboarding@resend.dev":
+        if not self.RESEND_FROM:
+            logging.warning("RESEND_FROM is not set; configure a verified sender.")
+        elif self.RESEND_FROM == "onboarding@resend.dev":
             logging.warning(
                 "RESEND_FROM is still using the default sender; configure a verified sender."
             )

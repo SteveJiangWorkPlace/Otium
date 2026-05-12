@@ -203,6 +203,7 @@ export interface LoginResponse {
   success: boolean;
   token: string;
   user_info?: UserInfo;
+  user?: UserInfo;
   message?: string;
 }
 
