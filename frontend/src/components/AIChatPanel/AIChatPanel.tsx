@@ -805,7 +805,7 @@ const AIChatPanel: React.FC<AIChatPanelProps> = ({ pageKey, className = '' }) =>
       <div className={styles.messagesContainer} ref={messagesContainerRef}>
         {conversation.messages.length === 0 ? (
           <div className={styles.emptyState}>
-            <h4 className={styles.emptyTitle}>我能为你做什么？</h4>
+            <h4 className={styles.emptyTitle}>找不到写作灵感？和我聊聊吧~</h4>
           </div>
         ) : (
           <div className={styles.messagesList}>
