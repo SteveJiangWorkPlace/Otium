@@ -10,6 +10,7 @@
 import logging
 import random
 import string
+from datetime import datetime, timedelta
 from typing import cast
 
 from config import settings
@@ -33,6 +34,73 @@ class VerificationService:
         self.verified_cache = CacheManager(ttl=1800, max_entries=1000)  # 30分钟
 
         logger.info("验证服务初始化完成")
+
+    @staticmethod
+    def _normalize_email(email: str) -> str:
+        return email.strip().lower()
+
+    def _set_entry(self, purpose: str, token_key: str, email: str | None, value: str, ttl: int) -> None:
+        from models.database import VerificationEntry, get_session_local
+
+        SessionLocal = get_session_local()
+        db = SessionLocal()
+        try:
+            expires_at = datetime.utcnow() + timedelta(seconds=ttl)
+            existing = db.query(VerificationEntry).filter(VerificationEntry.token_key == token_key).first()
+            if existing:
+                existing.purpose = purpose
+                existing.email = email
+                existing.value = value
+                existing.expires_at = expires_at
+            else:
+                db.add(
+                    VerificationEntry(
+                        purpose=purpose,
+                        token_key=token_key,
+                        email=email,
+                        value=value,
+                        expires_at=expires_at,
+                    )
+                )
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception("写入验证码记录失败: %s", token_key)
+            raise
+        finally:
+            db.close()
+
+    def _get_entry_value(self, token_key: str) -> str | None:
+        from models.database import VerificationEntry, get_session_local
+
+        SessionLocal = get_session_local()
+        db = SessionLocal()
+        try:
+            entry = db.query(VerificationEntry).filter(VerificationEntry.token_key == token_key).first()
+            if not entry:
+                return None
+
+            if entry.expires_at < datetime.utcnow():
+                db.delete(entry)
+                db.commit()
+                return None
+
+            return cast(str, entry.value)
+        finally:
+            db.close()
+
+    def _delete_entry(self, token_key: str) -> None:
+        from models.database import VerificationEntry, get_session_local
+
+        SessionLocal = get_session_local()
+        db = SessionLocal()
+        try:
+            entry = db.query(VerificationEntry).filter(VerificationEntry.token_key == token_key).first()
+            if entry:
+                db.delete(entry)
+                db.commit()
+        finally:
+            db.close()
 
     def generate_code(self, length: int = 6) -> str:
         """生成数字验证码
@@ -64,7 +132,9 @@ class VerificationService:
             email: 邮箱地址
             code: 验证码
         """
-        key = f"verify:{email}"
+        normalized_email = self._normalize_email(email)
+        key = f"verify:{normalized_email}"
+        self._set_entry("verify", key, normalized_email, code, settings.VERIFICATION_CODE_TTL)
         self.verification_cache.set(key, code)
         logger.debug(f"存储验证码: {email} -> {code}")
 
@@ -78,8 +148,9 @@ class VerificationService:
         Returns:
             Tuple[bool, str]: (是否验证成功, 错误信息)
         """
-        key = f"verify:{email}"
-        stored_code = self.verification_cache.get(key)
+        normalized_email = self._normalize_email(email)
+        key = f"verify:{normalized_email}"
+        stored_code = self._get_entry_value(key) or self.verification_cache.get(key)
 
         if not stored_code:
             return False, "验证码已过期或不存在，请重新发送"
@@ -88,6 +159,7 @@ class VerificationService:
             return False, "验证码错误，请重新输入"
 
         # 验证成功后删除验证码，防止重复使用
+        self._delete_entry(key)
         self.verification_cache.cache.pop(key, None)
         logger.debug(f"验证码验证成功: {email}")
         return True, "验证成功"
@@ -99,8 +171,10 @@ class VerificationService:
             email: 邮箱地址
             token: 重置令牌
         """
+        normalized_email = self._normalize_email(email)
         key = f"reset:{token}"
-        self.reset_token_cache.set(key, email)
+        self._set_entry("reset", key, normalized_email, normalized_email, settings.RESET_TOKEN_TTL)
+        self.reset_token_cache.set(key, normalized_email)
         logger.debug(f"存储重置令牌: {email} -> {token}")
 
     def verify_reset_token(self, token: str) -> tuple[bool, str | None]:
@@ -113,7 +187,7 @@ class VerificationService:
             Tuple[bool, Optional[str]]: (是否有效, 邮箱地址或None)
         """
         key = f"reset:{token}"
-        email = self.reset_token_cache.get(key)
+        email = self._get_entry_value(key) or self.reset_token_cache.get(key)
 
         if not email:
             return False, None
@@ -131,10 +205,11 @@ class VerificationService:
             Optional[str]: 邮箱地址或None（如果令牌无效）
         """
         key = f"reset:{token}"
-        email = self.reset_token_cache.get(key)
+        email = self._get_entry_value(key) or self.reset_token_cache.get(key)
 
         if email:
             # 删除令牌，防止重复使用
+            self._delete_entry(key)
             self.reset_token_cache.cache.pop(key, None)
             logger.debug(f"使用重置令牌: {token} -> {email}")
             # 类型断言：email不为None
@@ -150,8 +225,10 @@ class VerificationService:
             email: 已验证的邮箱
             token: 令牌
         """
+        normalized_email = self._normalize_email(email)
         key = f"verified:{token}"
-        self.verified_cache.set(key, email)
+        self._set_entry("verified", key, normalized_email, normalized_email, 1800)
+        self.verified_cache.set(key, normalized_email)
         logger.debug(f"存储已验证令牌: {email} -> {token}")
 
     def verify_verified_token(self, token: str) -> tuple[bool, str | None]:
@@ -164,7 +241,7 @@ class VerificationService:
             Tuple[bool, Optional[str]]: (是否有效, 邮箱地址或None)
         """
         key = f"verified:{token}"
-        email: str | None = self.verified_cache.get(key)
+        email: str | None = self._get_entry_value(key) or self.verified_cache.get(key)
 
         if not email:
             return False, None
@@ -182,10 +259,11 @@ class VerificationService:
             Optional[str]: 邮箱地址或None（如果令牌无效）
         """
         key = f"verified:{token}"
-        email: str | None = self.verified_cache.get(key)
+        email: str | None = self._get_entry_value(key) or self.verified_cache.get(key)
 
         if email:
             # 删除令牌，防止重复使用
+            self._delete_entry(key)
             self.verified_cache.cache.pop(key, None)
             logger.debug(f"使用已验证令牌: {token} -> {email}")
             # 类型断言：email不为None

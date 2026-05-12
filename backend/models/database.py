@@ -283,6 +283,20 @@ class TranslationRecord(Base):
         }
 
 
+class VerificationEntry(Base):
+    """邮箱验证码和临时令牌表。"""
+
+    __tablename__ = "verification_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    purpose = Column(String(50), nullable=False, index=True)
+    token_key = Column(String(512), unique=True, nullable=False, index=True)
+    email = Column(String(255), nullable=True, index=True)
+    value = Column(String(512), nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    created_at = Column(DateTime, default=func.now())
+
+
 class BackgroundTask(Base):
     """后台任务表（用于处理长时间运行的任务）"""
 
