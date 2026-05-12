@@ -11,6 +11,7 @@ from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from config import settings
@@ -32,6 +33,10 @@ class UserService:
         logging.info("UserService initialized with database storage")
         logging.info("Monthly translation limit: %s", settings.DAILY_TRANSLATION_LIMIT)
         logging.info("Monthly AI detection limit: %s", settings.DAILY_AI_DETECTION_LIMIT)
+
+    @staticmethod
+    def _normalize_email(email: str) -> str:
+        return email.strip().lower()
 
     def _current_beijing_month_bounds_utc(self) -> tuple[datetime, datetime]:
         now_beijing = datetime.now(self.BEIJING_TZ)
@@ -703,6 +708,8 @@ class UserService:
         """
         db = self._get_db_session()
         try:
+            normalized_email = self._normalize_email(email)
+
             # 验证用户名长度和格式
             if len(username) < 3:
                 return False, "用户名至少需要3个字符"
@@ -714,7 +721,7 @@ class UserService:
                 return False, "密码至少需要6个字符"
 
             # 验证邮箱格式（简单验证）
-            if "@" not in email or "." not in email:
+            if "@" not in normalized_email or "." not in normalized_email:
                 return False, "邮箱格式不正确"
 
             # 检查用户名是否已存在
@@ -723,8 +730,10 @@ class UserService:
                 return False, "用户名已被使用"
 
             # 检查邮箱是否已存在（如果有邮箱验证要求）
-            if email:
-                existing_email = db.query(User).filter(User.email == email).first()
+            if normalized_email:
+                existing_email = (
+                    db.query(User).filter(func.lower(User.email) == normalized_email).first()
+                )
                 if existing_email:
                     return False, "邮箱已被注册"
 
@@ -734,7 +743,7 @@ class UserService:
             # 创建新用户
             new_user = User(
                 username=username,
-                email=email,
+                email=normalized_email,
                 email_verified=email_verified,
                 password_hash=hash_password(password),
                 expiry_date=expiry_date_obj,
@@ -752,7 +761,7 @@ class UserService:
             db.add(usage)
 
             db.commit()
-            logging.info("User registered successfully: %s (%s)", username, email)
+            logging.info("User registered successfully: %s (%s)", username, normalized_email)
             return True, "注册成功"
 
         except Exception as e:
@@ -777,27 +786,33 @@ class UserService:
         """
         db = self._get_db_session()
         try:
+            normalized_email = self._normalize_email(email)
             user = db.query(User).filter(User.username == username).first()
 
             if not user:
                 return False, "用户不存在"
 
             # 验证邮箱格式
-            if "@" not in email or "." not in email:
+            if "@" not in normalized_email or "." not in normalized_email:
                 return False, "邮箱格式不正确"
 
             # 检查邮箱是否已被其他用户使用
             existing_email = (
-                db.query(User).filter(User.email == email, User.username != username).first()
+                db.query(User)
+                .filter(
+                    func.lower(User.email) == normalized_email,
+                    User.username != username,
+                )
+                .first()
             )
             if existing_email:
                 return False, "邮箱已被其他用户使用"
 
-            user.email = email  # type: ignore[assignment]
+            user.email = normalized_email  # type: ignore[assignment]
             user.email_verified = email_verified  # type: ignore[assignment]
             db.commit()
 
-            logging.info("User email updated successfully: %s -> %s", username, email)
+            logging.info("User email updated successfully: %s -> %s", username, normalized_email)
             return True, "邮箱更新成功"
 
         except Exception as e:
@@ -850,8 +865,9 @@ class UserService:
         """
         db = self._get_db_session()
         try:
+            normalized_email = self._normalize_email(email)
             # 查找邮箱对应的用户
-            user = db.query(User).filter(User.email == email).first()
+            user = db.query(User).filter(func.lower(User.email) == normalized_email).first()
 
             if not user:
                 return False, "该邮箱未注册", None
@@ -859,7 +875,7 @@ class UserService:
             if not user.is_active:
                 return False, "用户已被禁用", None
 
-            logging.info("Password reset requested: %s -> %s", email, user.username)
+            logging.info("Password reset requested: %s -> %s", normalized_email, user.username)
             return True, "重置请求已接受", user.username  # type: ignore[return-value]
 
         except Exception as e:
@@ -917,7 +933,8 @@ class UserService:
         """
         db = self._get_db_session()
         try:
-            user = db.query(User).filter(User.email == email).first()
+            normalized_email = self._normalize_email(email)
+            user = db.query(User).filter(func.lower(User.email) == normalized_email).first()
 
             if not user:
                 return None
@@ -975,13 +992,17 @@ class UserService:
         Returns:
             Tuple[bool, str]: (是否可用, 错误信息)
         """
+        normalized_email = self._normalize_email(email)
+
         # 验证邮箱格式
-        if "@" not in email or "." not in email:
+        if "@" not in normalized_email or "." not in normalized_email:
             return False, "邮箱格式不正确"
 
         db = self._get_db_session()
         try:
-            existing_email = db.query(User).filter(User.email == email).first()
+            existing_email = (
+                db.query(User).filter(func.lower(User.email) == normalized_email).first()
+            )
             if existing_email:
                 return False, "邮箱已被注册"
 

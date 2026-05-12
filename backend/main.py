@@ -195,6 +195,10 @@ def _error_detail(
     ).model_dump()
 
 
+def _normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
 def _get_gemini_api_key_from_request(http_request: Request) -> tuple[str | None, str]:
     api_key = os.environ.get("GEMINI_API_KEY")
     source = "environment"
@@ -713,39 +717,40 @@ async def send_verification_code(request: SendVerificationRequest):
 
     用于注册流程中的邮箱验证
     """
-    logger.info(f"发送验证码请求: {request.email}")
+    email = _normalize_email(request.email)
+    logger.info(f"发送验证码请求: {email}")
 
     # 检查邮箱格式
-    if "@" not in request.email or "." not in request.email:
+    if "@" not in email or "." not in email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=_error_detail(
                 "INVALID_EMAIL",
                 "邮箱格式不正确",
-                {"email": request.email},
+                {"email": email},
             ),
         )
 
     # 检查速率限制
-    if verification_service.is_rate_limited(request.email, "verify"):
+    if verification_service.is_rate_limited(email, "verify"):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=_error_detail(
                 "RATE_LIMIT_EXCEEDED",
                 "验证码发送过于频繁，请稍后再试",
-                {"email": request.email},
+                {"email": email},
             ),
         )
 
     # 检查邮箱是否已被注册
-    user_info = user_service.get_user_by_email(request.email)
+    user_info = user_service.get_user_by_email(email)
     if user_info:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=_error_detail(
                 "EMAIL_ALREADY_REGISTERED",
                 "该邮箱已被注册",
-                {"email": request.email},
+                {"email": email},
             ),
         )
 
@@ -753,23 +758,23 @@ async def send_verification_code(request: SendVerificationRequest):
     verification_code = verification_service.generate_code()
 
     # 存储验证码到缓存
-    verification_service.store_verification_code(request.email, verification_code)
+    verification_service.store_verification_code(email, verification_code)
 
     # 发送邮件
-    email_sent = email_service.send_verification_code(request.email, verification_code)
+    email_sent = email_service.send_verification_code(email, verification_code)
 
     if not email_sent:
-        logger.error(f"验证码邮件发送失败: {request.email}")
+        logger.error(f"验证码邮件发送失败: {email}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=_error_detail(
                 "EMAIL_DELIVERY_FAILED",
                 "验证码邮件发送失败，请稍后重试",
-                {"email": request.email},
+                {"email": email},
             ),
         )
 
-    logger.info(f"验证码发送成功: {request.email}")
+    logger.info(f"验证码发送成功: {email}")
     return VerificationResponse(success=True, message="验证码已发送到您的邮箱，请查收")
 
 
@@ -780,10 +785,11 @@ async def verify_email_code(request: VerifyEmailRequest):
 
     验证成功后返回一个临时令牌，用于后续注册步骤
     """
-    logger.info(f"验证邮箱验证码: {request.email}")
+    email = _normalize_email(request.email)
+    logger.info(f"验证邮箱验证码: {email}")
 
     # 验证验证码
-    is_valid, error_message = verification_service.verify_code(request.email, request.code)
+    is_valid, error_message = verification_service.verify_code(email, request.code)
 
     if not is_valid:
         raise HTTPException(
@@ -791,15 +797,15 @@ async def verify_email_code(request: VerifyEmailRequest):
             detail=_error_detail(
                 "INVALID_VERIFICATION_CODE",
                 error_message,
-                {"email": request.email},
+                {"email": email},
             ),
         )
 
     # 验证成功，生成临时令牌（用于后续注册）
     verification_token = verification_service.generate_alphanumeric_code(32)
-    verification_service.store_verified_token(request.email, verification_token)
+    verification_service.store_verified_token(email, verification_token)
 
-    logger.info(f"邮箱验证成功: {request.email}")
+    logger.info(f"邮箱验证成功: {email}")
     return VerificationResponse(
         success=True, message="邮箱验证成功", verification_token=verification_token
     )
@@ -826,18 +832,19 @@ async def register_user(request: RegisterRequest):
 
     需要提供已验证邮箱的临时令牌
     """
-    logger.info(f"注册请求: 用户名={request.username}, 邮箱={request.email}")
+    email = _normalize_email(request.email)
+    logger.info(f"注册请求: 用户名={request.username}, 邮箱={email}")
 
     # 验证临时令牌（确保邮箱已验证）
     is_valid, token_email = verification_service.verify_verified_token(request.verification_token)
 
-    if not is_valid or token_email != request.email:
+    if not is_valid or token_email != email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=_error_detail(
                 "INVALID_VERIFICATION_TOKEN",
                 "邮箱验证已过期或无效，请重新验证邮箱",
-                {"email": request.email},
+                {"email": email},
             ),
         )
 
@@ -854,21 +861,21 @@ async def register_user(request: RegisterRequest):
         )
 
     # 验证邮箱可用性
-    email_available, email_message = user_service.check_email_available(request.email)
+    email_available, email_message = user_service.check_email_available(email)
     if not email_available:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=_error_detail(
                 "EMAIL_UNAVAILABLE",
                 email_message,
-                {"email": request.email},
+                {"email": email},
             ),
         )
 
     # 注册用户（邮箱已验证）
     success, error_message = user_service.register_user(
         username=request.username,
-        email=request.email,
+        email=email,
         password=request.password,
         email_verified=True,  # 邮箱已验证
     )
@@ -879,13 +886,13 @@ async def register_user(request: RegisterRequest):
             detail=_error_detail(
                 "REGISTRATION_FAILED",
                 error_message,
-                {"username": request.username, "email": request.email},
+                {"username": request.username, "email": email},
             ),
         )
 
     # 发送欢迎邮件（异步或后台任务）
     try:
-        email_service.send_welcome_email(request.email, request.username)
+        email_service.send_welcome_email(email, request.username)
     except Exception as e:
         logger.error(f"发送欢迎邮件失败: {e}")
         # 不中断注册流程，仅记录错误
@@ -921,38 +928,39 @@ async def register_user(request: RegisterRequest):
 @api_error_handler
 async def request_password_reset(request: PasswordResetRequest):
     """请求密码重置（发送重置链接）"""
-    logger.info(f"密码重置请求: {request.email}")
+    email = _normalize_email(request.email)
+    logger.info(f"密码重置请求: {email}")
 
     # 验证邮箱格式
-    if "@" not in request.email or "." not in request.email:
+    if "@" not in email or "." not in email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=_error_detail(
                 "INVALID_EMAIL",
                 "邮箱格式不正确",
-                {"email": request.email},
+                {"email": email},
             ),
         )
 
     # 检查邮箱是否存在
-    success, error_message, username = user_service.request_password_reset(request.email)
+    success, error_message, username = user_service.request_password_reset(email)
 
     if not success:
         # 即使邮箱不存在，也返回成功（防止邮箱枚举攻击）
-        logger.info(f"密码重置请求处理: {request.email} - {error_message}")
+        logger.info(f"密码重置请求处理: {email} - {error_message}")
         return PasswordResetResponse(
             success=True, message="如果邮箱已注册，重置链接将发送到您的邮箱"
         )
 
     # 生成重置令牌
     reset_token = verification_service.generate_alphanumeric_code(32)
-    verification_service.store_reset_token(request.email, reset_token)
+    verification_service.store_reset_token(email, reset_token)
 
     # 发送重置邮件
-    email_sent = email_service.send_password_reset_link(request.email, reset_token)
+    email_sent = email_service.send_password_reset_link(email, reset_token)
 
     if not email_sent:
-        logger.error(f"密码重置邮件发送失败: {request.email}")
+        logger.error(f"密码重置邮件发送失败: {email}")
         # 仍然返回成功，不暴露内部错误
         return PasswordResetResponse(
             success=True,
@@ -960,7 +968,7 @@ async def request_password_reset(request: PasswordResetRequest):
             username=username,
         )
 
-    logger.info(f"密码重置邮件发送成功: {request.email}")
+    logger.info(f"密码重置邮件发送成功: {email}")
     return PasswordResetResponse(
         success=True, message="密码重置链接已发送到您的邮箱，请查收", username=username
     )
@@ -1028,13 +1036,14 @@ async def check_email_available(email: str):
 
     用于注册时的实时邮箱验证
     """
-    logger.info(f"检查邮箱可用性: {email}")
+    normalized_email = _normalize_email(email)
+    logger.info(f"检查邮箱可用性: {normalized_email}")
 
     # 验证邮箱格式
-    if "@" not in email or "." not in email:
+    if "@" not in normalized_email or "." not in normalized_email:
         return CheckEmailResponse(available=False, message="邮箱格式不正确")
 
-    email_available, message = user_service.check_email_available(email)
+    email_available, message = user_service.check_email_available(normalized_email)
 
     return CheckEmailResponse(available=email_available, message=message)
 

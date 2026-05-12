@@ -108,7 +108,7 @@ const Register: React.FC = () => {
       debugLog('邮箱检查结果:', emailCheck);
 
       if (!emailCheck.available) {
-        setEmailError('该邮箱已被注册');
+        setEmailError(emailCheck.message || '该邮箱已被注册');
         setCheckingEmail(false);
         setSendingCode(false);
         return;
@@ -136,6 +136,11 @@ const Register: React.FC = () => {
       let errorMessage = '发送验证码失败，请稍后重试';
       if (error?.message) {
         errorMessage = error.message;
+      }
+      if (errorMessage.includes('邮箱已被注册')) {
+        setEmailError(errorMessage);
+        setFormError('');
+        return;
       }
       setFormError(errorMessage);
     } finally {
