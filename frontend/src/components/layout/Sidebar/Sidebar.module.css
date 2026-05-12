@@ -112,7 +112,7 @@
 
 .menuButton {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   width: 100%;
   padding: var(--spacing-2) var(--spacing-4);
   border: none;
@@ -138,6 +138,10 @@
   color: white;
 }
 
+.menuButton.active .menuDescription {
+  color: var(--color-gray-300);
+}
+
 .menuButton:focus,
 .menuButton:focus-visible {
   outline: none;
@@ -158,18 +162,34 @@
   object-fit: contain;
 }
 
+.menuText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .menuLabel {
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-normal);
-  line-height: var(--line-height-normal);
+  line-height: var(--line-height-tight);
+}
+
+.menuDescription {
+  color: var(--color-gray-700);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-tight);
+  white-space: normal;
 }
 
 .sidebar.collapsed .menuButton {
   justify-content: center;
+  align-items: center;
   padding: var(--spacing-3);
 }
 
-.sidebar.collapsed .menuLabel {
+.sidebar.collapsed .menuText {
   display: none;
 }
 

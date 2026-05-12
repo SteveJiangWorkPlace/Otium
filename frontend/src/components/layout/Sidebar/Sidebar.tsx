@@ -14,6 +14,7 @@ export interface SidebarProps {
 interface MenuItem {
   id: string;
   label: string;
+  description?: string;
   visible: boolean;
 }
 
@@ -32,21 +33,25 @@ const Sidebar: React.FC<SidebarProps> = ({
     {
       id: 'translation',
       label: '文本翻译',
+      description: '将中文文本翻译为英文',
       visible: true,
     },
     {
       id: 'ai-detection',
       label: 'AI率检测',
+      description: '通过GPTZero检测AI率',
       visible: true,
     },
     {
       id: 'modification',
       label: '文本修改',
+      description: '修改文本以降低AI率',
       visible: true,
     },
     {
       id: 'correction',
       label: '智能纠错',
+      description: '识别中文文本的写作错误',
       visible: true,
     },
     {
@@ -97,7 +102,14 @@ const Sidebar: React.FC<SidebarProps> = ({
                   aria-label={item.label}
                   title={item.label}
                 >
-                  {!isCollapsed && <span className={styles.menuLabel}>{item.label}</span>}
+                  {!isCollapsed && (
+                    <span className={styles.menuText}>
+                      <span className={styles.menuLabel}>{item.label}</span>
+                      {item.description && (
+                        <span className={styles.menuDescription}>{item.description}</span>
+                      )}
+                    </span>
+                  )}
                 </button>
               </li>
             );
