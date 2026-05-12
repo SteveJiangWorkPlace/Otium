@@ -103,12 +103,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                   title={item.label}
                 >
                   {!isCollapsed && (
-                    <span className={styles.menuText}>
+                    <>
                       <span className={styles.menuLabel}>{item.label}</span>
                       {item.description && (
                         <span className={styles.menuDescription}>{item.description}</span>
                       )}
-                    </span>
+                    </>
                   )}
                 </button>
               </li>
