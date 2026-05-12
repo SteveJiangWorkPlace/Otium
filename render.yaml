@@ -49,9 +49,9 @@ services:
 
       # ==================== 用户限制配置 ====================
       - key: DAILY_TRANSLATION_LIMIT
-        value: "3"
+        value: "15"
       - key: DAILY_AI_DETECTION_LIMIT
-        value: "3"
+        value: "15"
 
       # ==================== 管理员配置 ====================
       - key: ADMIN_USERNAME
@@ -130,9 +130,9 @@ services:
 
       # ==================== 用户限制配置 ====================
       - key: DAILY_TRANSLATION_LIMIT
-        value: "3"
+        value: "15"
       - key: DAILY_AI_DETECTION_LIMIT
-        value: "3"
+        value: "15"
 
       # ==================== 管理员配置 ====================
       - key: ADMIN_USERNAME

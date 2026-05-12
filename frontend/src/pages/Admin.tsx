@@ -26,8 +26,8 @@ const Admin: React.FC = () => {
   const [formData, setFormData] = useState({
     username: '',
     password: '',
-    monthly_translation_limit: 5,
-    monthly_ai_detection_limit: 5,
+    monthly_translation_limit: 15,
+    monthly_ai_detection_limit: 15,
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
@@ -93,8 +93,8 @@ const Admin: React.FC = () => {
       const account: GeneratedAccountInfo = {
         username,
         password,
-        monthly_translation_limit: 5,
-        monthly_ai_detection_limit: 5,
+        monthly_translation_limit: 15,
+        monthly_ai_detection_limit: 15,
       };
 
       await apiClient.addUser(account);
@@ -125,8 +125,8 @@ const Admin: React.FC = () => {
     setFormData({
       username: '',
       password: '',
-      monthly_translation_limit: 5,
-      monthly_ai_detection_limit: 5,
+      monthly_translation_limit: 15,
+      monthly_ai_detection_limit: 15,
     });
     setFormErrors({});
     setModalVisible(true);

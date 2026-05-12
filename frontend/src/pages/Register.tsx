@@ -269,8 +269,8 @@ const Register: React.FC = () => {
         const userInfo = response.user_info ||
           response.user || {
             username,
-            monthly_translation_limit: 5,
-            monthly_ai_detection_limit: 5,
+            monthly_translation_limit: 15,
+            monthly_ai_detection_limit: 15,
             monthly_translation_used: 0,
             monthly_ai_detection_used: 0,
             is_admin: false,

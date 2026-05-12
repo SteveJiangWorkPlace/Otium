@@ -123,8 +123,8 @@ class TestRequestModels:
         data = {"username": "testuser"}
         request = UpdateUserRequest(**data)
         assert request.username == "testuser"
-        assert request.daily_translation_limit is None
-        assert request.daily_ai_detection_limit is None
+        assert request.monthly_translation_limit is None
+        assert request.monthly_ai_detection_limit is None
         assert request.password is None
 
         # 所有字段
@@ -135,8 +135,8 @@ class TestRequestModels:
             "password": "newpassword123",
         }
         request = UpdateUserRequest(**data)
-        assert request.daily_translation_limit == 10
-        assert request.daily_ai_detection_limit == 5
+        assert request.monthly_translation_limit == 10
+        assert request.monthly_ai_detection_limit == 5
         assert request.password == "newpassword123"
 
     def test_add_user_request(self):
@@ -145,8 +145,8 @@ class TestRequestModels:
         request = AddUserRequest(**data)
         assert request.username == "newuser"
         assert request.password == "password123"
-        assert request.daily_translation_limit == 3  # 默认值
-        assert request.daily_ai_detection_limit == 3  # 默认值
+        assert request.monthly_translation_limit == 15  # 默认值
+        assert request.monthly_ai_detection_limit == 15  # 默认值
 
         # 自定义限制
         data = {
@@ -156,8 +156,8 @@ class TestRequestModels:
             "daily_ai_detection_limit": 5,
         }
         request = AddUserRequest(**data)
-        assert request.daily_translation_limit == 10
-        assert request.daily_ai_detection_limit == 5
+        assert request.monthly_translation_limit == 10
+        assert request.monthly_ai_detection_limit == 5
 
     def test_verification_requests(self):
         """测试验证相关请求模型"""
@@ -213,17 +213,17 @@ class TestResponseModels:
         # UserInfo
         data = {
             "username": "testuser",
-            "daily_translation_limit": 10,
-            "daily_ai_detection_limit": 5,
-            "daily_translation_used": 2,
-            "daily_ai_detection_used": 1,
+            "monthly_translation_limit": 10,
+            "monthly_ai_detection_limit": 5,
+            "monthly_translation_used": 2,
+            "monthly_ai_detection_used": 1,
             "is_admin": False,
             "is_active": True,
         }
         user_info = UserInfo(**data)
         assert user_info.username == "testuser"
-        assert user_info.daily_translation_limit == 10
-        assert user_info.daily_ai_detection_used == 1
+        assert user_info.monthly_translation_limit == 10
+        assert user_info.monthly_ai_detection_used == 1
         assert user_info.is_admin is False
 
         # UserInfoWithEmail
@@ -231,10 +231,10 @@ class TestResponseModels:
             "username": "testuser",
             "email": "test@example.com",
             "email_verified": True,
-            "daily_translation_limit": 10,
-            "daily_ai_detection_limit": 5,
-            "daily_translation_used": 2,
-            "daily_ai_detection_used": 1,
+            "monthly_translation_limit": 10,
+            "monthly_ai_detection_limit": 5,
+            "monthly_translation_used": 2,
+            "monthly_ai_detection_used": 1,
             "is_admin": False,
             "is_active": True,
         }
@@ -487,9 +487,9 @@ class TestModelValidationEdgeCases:
             ("password", "short", True),  # 短密码（允许，由业务逻辑验证）
             ("email", "invalid-email", True),  # 无效邮箱格式（允许，由业务逻辑验证）
             ("email", "valid@example.com", True),
-            ("daily_translation_limit", -1, True),  # 负限制（允许，由业务逻辑验证）
-            ("daily_translation_limit", 0, True),
-            ("daily_translation_limit", 1000, True),
+            ("monthly_translation_limit", -1, True),  # 负限制（允许，由业务逻辑验证）
+            ("monthly_translation_limit", 0, True),
+            ("monthly_translation_limit", 1000, True),
             ("ai_probability", 1.5, False),  # 超出范围的概率
             ("ai_probability", -0.1, False),
             ("ai_probability", 0.5, True),
@@ -511,7 +511,7 @@ class TestModelValidationEdgeCases:
         elif field == "email":
             model_class = SendVerificationRequest
             data = {"email": value}
-        elif field == "daily_translation_limit":
+        elif field == "monthly_translation_limit":
             model_class = AddUserRequest
             data = {"username": "test", "password": "test"}
             data[field] = value

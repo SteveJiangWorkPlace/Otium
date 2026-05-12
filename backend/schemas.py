@@ -72,11 +72,11 @@ class AddUserRequest(BaseModel):
     username: str = Field(min_length=1, description="用户名不能为空")
     password: str = Field(min_length=1, description="密码不能为空")
     monthly_translation_limit: int = Field(
-        default=5,
+        default=15,
         validation_alias=AliasChoices("monthly_translation_limit", "daily_translation_limit"),
     )
     monthly_ai_detection_limit: int = Field(
-        default=5,
+        default=15,
         validation_alias=AliasChoices("monthly_ai_detection_limit", "daily_ai_detection_limit"),
     )
 
