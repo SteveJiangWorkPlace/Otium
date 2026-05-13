@@ -362,6 +362,11 @@ export const apiClient = {
     return response.data;
   },
 
+  startGuestSession: async (): Promise<LoginResponse> => {
+    const response = await axiosInstance.post<LoginResponse>('/guest/start', {});
+    return response.data;
+  },
+
   sendVerificationCode: async (email: string): Promise<ApiResponse> => {
     const response = await axiosInstance.post<ApiResponse>('/register/send-verification', {
       email,

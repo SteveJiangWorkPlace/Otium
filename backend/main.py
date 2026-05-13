@@ -199,6 +199,62 @@ def _normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
+def _get_client_ip(http_request: Request) -> str:
+    forwarded_for = http_request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+
+    real_ip = http_request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
+
+    if http_request.client and http_request.client.host:
+        return http_request.client.host
+
+    return "unknown"
+
+
+def _build_guest_bucket_id(http_request: Request) -> str:
+    user_agent = http_request.headers.get("user-agent", "unknown")
+    client_ip = _get_client_ip(http_request)
+    raw_fingerprint = f"{client_ip}|{user_agent}|{SECRET_KEY}"
+    return hashlib.sha256(raw_fingerprint.encode("utf-8")).hexdigest()[:32]
+
+
+def _is_guest_username(username: str) -> bool:
+    return username.startswith(UserService.GUEST_USERNAME_PREFIX)
+
+
+def _record_usage_or_raise(username: str, operation_type: str, text_length: int | None = None) -> int:
+    try:
+        return user_service.record_usage(
+            username,
+            operation_type=operation_type,
+            text_length=text_length,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=_error_detail(
+                "MONTHLY_LIMIT_REACHED",
+                str(e),
+                {"username": username, "operation_type": operation_type},
+            ),
+        ) from e
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=_error_detail(
+                "DATA_SAVE_ERROR",
+                "系统错误：无法保存使用记录",
+                {
+                    "original_error": str(e),
+                    "exception_type": "RuntimeError",
+                },
+            ),
+        ) from e
+
+
 def _get_gemini_api_key_from_request(http_request: Request) -> tuple[str | None, str]:
     api_key = os.environ.get("GEMINI_API_KEY")
     source = "environment"
@@ -705,6 +761,27 @@ async def login(data: LoginRequest):
         )
 
 
+@app.post("/api/guest/start")
+@api_error_handler
+async def start_guest_session(http_request: Request):
+    """Start or reuse an anonymous guest session with monthly limits."""
+    guest_bucket_id = _build_guest_bucket_id(http_request)
+    user_info = user_service.ensure_guest_user(guest_bucket_id)
+    username = user_info["username"]
+
+    token_data = {"sub": username, "role": "guest"}
+    access_token = jwt.encode(token_data, SECRET_KEY, algorithm=ALGORITHM)
+
+    return {
+        "success": True,
+        "token": access_token,
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": user_info,
+        "message": "",
+    }
+
+
 # ==========================================
 # 用户注册和密码重置API
 # ==========================================
@@ -1204,6 +1281,8 @@ async def check_text(
                     },
                 ),
             ) from e
+    elif request.operation == "error_check" and _is_guest_username(username):
+        _record_usage_or_raise(username, "error_check", len(request.text))
 
     gemini_cache.set(cache_key, response_data)
     return response_data
@@ -1316,13 +1395,8 @@ async def translate_stream(
             )
             yield f"data: {error_chunk.model_dump_json(exclude_none=True)}\n\n"
 
-    try:
-        remaining = user_service.record_usage(
-            username, operation_type=request.operation, text_length=len(request.text)
-        )
-        logging.info(f"stream translation usage recorded for {username}, remaining={remaining}")
-    except Exception as e:
-        logging.error(f"failed to record stream translation usage: {str(e)}")
+    remaining = _record_usage_or_raise(username, request.operation, len(request.text))
+    logging.info(f"stream translation usage recorded for {username}, remaining={remaining}")
 
     return StreamingResponse(
         stream_generator(),
@@ -1432,6 +1506,9 @@ async def error_check_stream(
             delay_seconds=0.015,
         ):
             yield payload
+
+    if _is_guest_username(username):
+        _record_usage_or_raise(username, "error_check", len(request.text))
 
     return StreamingResponse(
         stream_generator(),
@@ -1557,6 +1634,9 @@ async def refine_stream(
             )
             yield f"data: {error_chunk.model_dump_json(exclude_none=True)}\n\n"
 
+    if _is_guest_username(username):
+        _record_usage_or_raise(username, "refine", len(request.text))
+
     return StreamingResponse(
         stream_generator(),
         media_type="text/event-stream",
@@ -1630,6 +1710,9 @@ async def refine_text(
         "annotations_processed": len(annotations) if annotations else 0,
     }
 
+    if _is_guest_username(username):
+        _record_usage_or_raise(username, "refine", len(request.text))
+
     gemini_cache.set(cache_key, response_data)
     return response_data
 
@@ -1657,6 +1740,9 @@ async def detect_ai(
                 {"wait_time": wait_time, "username": username},
             ),
         )
+
+    if _is_guest_username(username):
+        _record_usage_or_raise(username, "ai_detection", len(request.text))
 
     # 优先从环境变量读取GPTZero API密钥
     gptzero_api_key = None
@@ -1740,12 +1826,13 @@ async def detect_ai(
     gptzero_cache.set(cache_key, result)
 
     # 记录AI检测使用
-    try:
-        user_service.record_usage(
-            username, operation_type="ai_detection", text_length=len(request.text)
-        )
-    except Exception as e:
-        logging.warning(f"记录AI检测使用失败，但不影响返回结果: {str(e)}")
+    if not _is_guest_username(username):
+        try:
+            user_service.record_usage(
+                username, operation_type="ai_detection", text_length=len(request.text)
+            )
+        except Exception as e:
+            logging.warning(f"记录AI检测使用失败，但不影响返回结果: {str(e)}")
 
     return result
 
@@ -1788,6 +1875,9 @@ async def chat_stream_endpoint(
         )
 
     messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
+    if _is_guest_username(username):
+        text_length = sum(len(msg.get("content", "")) for msg in messages)
+        _record_usage_or_raise(username, "ai_chat", text_length)
 
     if request.literature_research_mode:
         manus_api_key = os.environ.get("MANUS_API_KEY")
@@ -1993,6 +2083,9 @@ async def chat_endpoint(
     messages = []
     for msg in request.messages:
         messages.append({"role": msg.role, "content": msg.content})
+    if _is_guest_username(username):
+        text_length = sum(len(msg.get("content", "")) for msg in messages)
+        _record_usage_or_raise(username, "ai_chat", text_length)
 
     # 获取API密钥（优先从环境变量获取，其次从请求头获取）
     api_key = None

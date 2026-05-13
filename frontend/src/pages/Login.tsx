@@ -14,6 +14,7 @@ const Login: React.FC = () => {
   const [usernameError, setUsernameError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [guestLoading, setGuestLoading] = useState(false);
   const navigate = useNavigate();
   const setAuth = useAuthStore((state) => state.setAuth);
 
@@ -35,6 +36,37 @@ const Login: React.FC = () => {
     }
 
     return isValid;
+  };
+
+  const handleGuestMode = async () => {
+    setLoginError('');
+    setUsernameError('');
+    setPasswordError('');
+    setGuestLoading(true);
+
+    try {
+      const response = await apiClient.startGuestSession();
+      const userInfo = response.user || response.user_info;
+      const token = response.token || (response as any).access_token;
+
+      if (!token || !userInfo) {
+        throw new Error('无法进入尝鲜模式，请稍后重试');
+      }
+
+      setAuth(token, userInfo);
+      resetAllStores();
+      navigate('/');
+    } catch (error) {
+      let errorMessage = '无法进入尝鲜模式，请稍后重试';
+
+      if (error instanceof Error && error.message) {
+        errorMessage = error.message;
+      }
+
+      setLoginError(errorMessage);
+    } finally {
+      setGuestLoading(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -129,8 +161,22 @@ const Login: React.FC = () => {
             loading={loading}
             fullWidth
             className={styles.loginButton}
+            disabled={guestLoading}
           >
             {loading ? '登录中...' : '登录'}
+          </Button>
+
+          <Button
+            type="button"
+            variant="secondary"
+            size="large"
+            loading={guestLoading}
+            fullWidth
+            className={styles.guestButton}
+            disabled={loading}
+            onClick={handleGuestMode}
+          >
+            {guestLoading ? '进入中...' : '尝鲜模式'}
           </Button>
         </form>
 

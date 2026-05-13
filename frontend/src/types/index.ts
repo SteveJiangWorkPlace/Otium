@@ -215,6 +215,7 @@ export interface UserInfo {
   monthly_translation_used: number;
   monthly_ai_detection_used: number;
   is_admin: boolean;
+  is_guest?: boolean;
   is_active: boolean;
   created_at?: string;
   updated_at?: string;
@@ -230,6 +231,7 @@ export interface UserInfoWithEmail {
   monthly_translation_used: number;
   monthly_ai_detection_used: number;
   is_admin: boolean;
+  is_guest?: boolean;
   is_active: boolean;
   created_at?: string;
   updated_at?: string;

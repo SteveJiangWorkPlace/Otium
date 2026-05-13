@@ -23,6 +23,16 @@ class UserService:
 
     BEIJING_TZ = ZoneInfo("Asia/Shanghai")
     DEFAULT_MONTHLY_LIMIT = 5
+    GUEST_USERNAME_PREFIX = "guest_"
+    GUEST_MONTHLY_LIMIT = 3
+    GUEST_LIMITED_OPERATIONS = [
+        "translate_us",
+        "translate_uk",
+        "ai_detection",
+        "error_check",
+        "refine",
+        "ai_chat",
+    ]
     SPECIAL_HIGH_LIMIT_USERS = {"dog", "cat"}
     SPECIAL_HIGH_LIMIT_VALUE = 999
 
@@ -101,7 +111,61 @@ class UserService:
         if self._is_special_high_limit_user(username):
             return self.SPECIAL_HIGH_LIMIT_VALUE, self.SPECIAL_HIGH_LIMIT_VALUE
 
+        if username.startswith(self.GUEST_USERNAME_PREFIX):
+            return self.GUEST_MONTHLY_LIMIT, self.GUEST_MONTHLY_LIMIT
+
         return user.daily_translation_limit, user.daily_ai_detection_limit
+
+    def ensure_guest_user(self, guest_id: str) -> dict[str, Any]:
+        """Create or return a limited guest user."""
+        safe_guest_id = "".join(ch for ch in guest_id.lower() if ch.isalnum() or ch in "-_")[:64]
+        if not safe_guest_id:
+            raise ValueError("Invalid guest id")
+
+        username = f"{self.GUEST_USERNAME_PREFIX}{safe_guest_id}"
+        db = self._get_db_session()
+        try:
+            user = db.query(User).filter(User.username == username).first()
+            if not user:
+                user = User(
+                    username=username,
+                    email=None,
+                    email_verified=False,
+                    password_hash=hash_password(safe_guest_id),
+                    expiry_date=date(2099, 12, 31),
+                    max_translations=0,
+                    daily_translation_limit=self.GUEST_MONTHLY_LIMIT,
+                    daily_ai_detection_limit=self.GUEST_MONTHLY_LIMIT,
+                    is_admin=False,
+                    is_active=True,
+                )
+                db.add(user)
+                db.flush()
+                db.add(UserUsage(user_id=user.id))
+                db.commit()
+                logging.info("Guest user created: %s", username)
+            elif (
+                user.daily_translation_limit != self.GUEST_MONTHLY_LIMIT
+                or user.daily_ai_detection_limit != self.GUEST_MONTHLY_LIMIT
+            ):
+                user.daily_translation_limit = self.GUEST_MONTHLY_LIMIT  # type: ignore[assignment]
+                user.daily_ai_detection_limit = self.GUEST_MONTHLY_LIMIT  # type: ignore[assignment]
+                user.is_active = True  # type: ignore[assignment]
+                db.commit()
+
+            user_info = self.get_user_info(username)
+            if not user_info:
+                raise ValueError("Guest user could not be loaded")
+
+            user_info["role"] = "guest"
+            user_info["is_guest"] = True
+            return user_info
+        except Exception:
+            db.rollback()
+            logging.exception("Failed to ensure guest user")
+            raise
+        finally:
+            db.close()
 
     def authenticate_user(self, username: str, password: str | None = None) -> tuple[bool, str]:
         """Validate a user, matching the legacy is_user_allowed API."""
@@ -168,7 +232,11 @@ class UserService:
                 translation_limit, ai_detection_limit = self._resolve_monthly_limits(user, username)
 
                 monthly_limit: int
-                if operation_type in ["translate_us", "translate_uk"]:
+                if username.startswith(self.GUEST_USERNAME_PREFIX):
+                    monthly_limit = self.GUEST_MONTHLY_LIMIT
+                    limit_type = "guest"
+                    operation_types = self.GUEST_LIMITED_OPERATIONS
+                elif operation_type in ["translate_us", "translate_uk"]:
                     monthly_limit = translation_limit
                     limit_type = "translation"
                     operation_types = ["translate_us", "translate_uk"]
@@ -238,6 +306,9 @@ class UserService:
                 # 返回0表示成功，前端不需要处理剩余次数
                 return 0
 
+            except ValueError:
+                db.rollback()
+                raise
             except Exception as e:
                 db.rollback()
                 logging.error(
@@ -307,17 +378,26 @@ class UserService:
                 user, username
             )
 
-            monthly_translation_used = self._count_usage_for_current_beijing_month(
-                db,
-                user.id,
-                ["translate_us", "translate_uk"],
-            )
+            if username.startswith(self.GUEST_USERNAME_PREFIX):
+                guest_used = self._count_usage_for_current_beijing_month(
+                    db,
+                    user.id,
+                    self.GUEST_LIMITED_OPERATIONS,
+                )
+                monthly_translation_used = guest_used
+                monthly_ai_detection_used = guest_used
+            else:
+                monthly_translation_used = self._count_usage_for_current_beijing_month(
+                    db,
+                    user.id,
+                    ["translate_us", "translate_uk"],
+                )
 
-            monthly_ai_detection_used = self._count_usage_for_current_beijing_month(
-                db,
-                user.id,
-                ["ai_detection"],
-            )
+                monthly_ai_detection_used = self._count_usage_for_current_beijing_month(
+                    db,
+                    user.id,
+                    ["ai_detection"],
+                )
 
             logging.info("Fetching user info for %s", username)
             logging.info(
@@ -335,6 +415,7 @@ class UserService:
                 "monthly_translation_used": monthly_translation_used,
                 "monthly_ai_detection_used": monthly_ai_detection_used,
                 "is_admin": user.is_admin,
+                "is_guest": username.startswith(self.GUEST_USERNAME_PREFIX),
                 "is_active": user.is_active,
                 "created_at": user.created_at.isoformat() if user.created_at else None,
                 "updated_at": user.updated_at.isoformat() if user.updated_at else None,
